@@ -2,8 +2,8 @@
 """
 Aplicación de Tablero Kanban "Kankai" con Streamlit.
 
-Versión 5.0: Se añade un sistema de diagnóstico de alertas de WhatsApp
-directamente en la interfaz para facilitar la depuración.
+Versión 6.0: Se añaden alertas de WhatsApp para los cambios de estado
+en el tablero Kanban (al iniciar o finalizar una tarea).
 """
 import streamlit as st
 import pandas as pd
@@ -70,9 +70,21 @@ class TaskManager:
     def update_task_status(self, task_id, new_status):
         idx = st.session_state.tasks_df.index[st.session_state.tasks_df['id'] == task_id]
         if not idx.empty:
+            # Obtener estado anterior para la lógica de notificación
+            old_status = st.session_state.tasks_df.loc[idx[0], 'status']
+            
+            # Actualizar estado
             st.session_state.tasks_df.loc[idx, 'status'] = new_status
             task_name = st.session_state.tasks_df.loc[idx[0], 'name']
-            st.toast(f"Tarea '{task_name}' movida a '{self.status_map[new_status]}'.", icon="🔄")
+            new_status_friendly = self.status_map[new_status]
+            st.toast(f"Tarea '{task_name}' movida a '{new_status_friendly}'.", icon="🔄")
+
+            # --- Disparador de Alerta de WhatsApp al cambiar de estado ---
+            # Notificar en hitos importantes (Iniciar o Finalizar)
+            if old_status != new_status and new_status in ['inprogress', 'done']:
+                icon = "⚙️" if new_status == 'inprogress' else "✅"
+                mensaje = f"{icon} Tarea Actualizada\n\n- **Nombre:** {task_name}\n- **Nuevo Estado:** {new_status_friendly}"
+                enviar_alerta_whatsapp(mensaje)
 
     def delete_task(self, task_id):
         task_name = st.session_state.tasks_df[st.session_state.tasks_df['id'] == task_id].iloc[0]['name']
@@ -231,7 +243,7 @@ with tab_manage:
     with col_optimize:
         st.header("Diagnóstico y Reportes", divider="violet")
         
-        # --- NUEVO: Panel de Diagnóstico de Alertas ---
+        # --- Panel de Diagnóstico de Alertas ---
         st.subheader("Diagnóstico de Alertas WhatsApp")
         st.info(f"**Estado de Conexión con Twilio:** `{st.session_state.get('twilio_status', 'No determinado')}`")
         if st.button("📲 Enviar Notificación de Prueba", use_container_width=True):

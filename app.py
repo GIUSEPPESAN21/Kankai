@@ -143,6 +143,40 @@ def create_difficulty_chart(tasks_df, difficulty_map):
     plt.style.use('default')
     return fig
 
+def generate_excel_report(tasks_df, summary, difficulty_map):
+    """
+    Genera un reporte en formato Excel con los datos de las tareas y un gráfico de progreso.
+    """
+    buffer = BytesIO()
+    
+    # Preparar el DataFrame para el reporte
+    report_df = tasks_df.copy()
+    report_df['estimatedTime'] = report_df['estimatedTimeMinutes'].apply(format_minutes_to_hm)
+    report_df['difficulty'] = report_df['difficulty'].map(difficulty_map)
+    report_df = report_df[['id', 'name', 'status', 'difficulty', 'estimatedTime']]
+    report_df.columns = ['ID', 'Nombre', 'Estado', 'Dificultad', 'Tiempo Estimado']
+
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        report_df.to_excel(writer, sheet_name='Tareas', index=False)
+        
+        # Añadir gráfico de progreso
+        fig = create_progress_chart(summary)
+        if fig:
+            # Guardar la figura en un buffer en memoria para evitar crear archivos temporales
+            img_buffer = BytesIO()
+            fig.savefig(img_buffer, format='png')
+            plt.close(fig)
+            img_buffer.seek(0)
+            
+            ws = writer.sheets['Tareas']
+            img = ExcelImage(img_buffer)
+            # Posicionar la imagen después de la tabla
+            img.anchor = f'A{len(report_df) + 3}'
+            ws.add_image(img)
+
+    buffer.seek(0)
+    return buffer
+
 # --- Interfaz de Streamlit ---
 
 st.set_page_config(page_title="Kankai Pro", layout="wide", page_icon="📝")
@@ -251,7 +285,10 @@ with tab_manage:
                         st.markdown(f"{i+1}. **{task['name']}** ({manager.difficulty_map[task['difficulty']]}, {format_minutes_to_hm(task['estimatedTimeMinutes'])})")
         
         st.subheader("Descargar Reporte")
-        excel_buffer = generate_excel_report(tasks, summary, manager.difficulty_map)
+        # Es necesario volver a obtener tasks y summary en este scope
+        tasks_for_report = manager.get_tasks()
+        summary_for_report = manager.get_progress_summary()
+        excel_buffer = generate_excel_report(tasks_for_report, summary_for_report, manager.difficulty_map)
         st.download_button(
             label="📄 Descargar Reporte Completo en Excel",
             data=excel_buffer,

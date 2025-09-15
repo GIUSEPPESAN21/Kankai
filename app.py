@@ -2,8 +2,8 @@
 """
 Aplicación de Tablero Kanban "Kankai" con Streamlit.
 
-Versión mejorada con una interfaz más atractiva, un dashboard de análisis
-y una navegación por pestañas para una experiencia de usuario profesional.
+Versión 3.0: Se añade una pestaña "Acerca de" para mostrar la información
+del autor y de la aplicación.
 """
 import streamlit as st
 import pandas as pd
@@ -144,36 +144,26 @@ def create_difficulty_chart(tasks_df, difficulty_map):
     return fig
 
 def generate_excel_report(tasks_df, summary, difficulty_map):
-    """
-    Genera un reporte en formato Excel con los datos de las tareas y un gráfico de progreso.
-    """
     buffer = BytesIO()
-    
-    # Preparar el DataFrame para el reporte
     report_df = tasks_df.copy()
     report_df['estimatedTime'] = report_df['estimatedTimeMinutes'].apply(format_minutes_to_hm)
     report_df['difficulty'] = report_df['difficulty'].map(difficulty_map)
+    report_df['status'] = report_df['status'].map(manager.status_map)
     report_df = report_df[['id', 'name', 'status', 'difficulty', 'estimatedTime']]
     report_df.columns = ['ID', 'Nombre', 'Estado', 'Dificultad', 'Tiempo Estimado']
 
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
         report_df.to_excel(writer, sheet_name='Tareas', index=False)
-        
-        # Añadir gráfico de progreso
         fig = create_progress_chart(summary)
         if fig:
-            # Guardar la figura en un buffer en memoria para evitar crear archivos temporales
             img_buffer = BytesIO()
             fig.savefig(img_buffer, format='png')
             plt.close(fig)
             img_buffer.seek(0)
-            
             ws = writer.sheets['Tareas']
             img = ExcelImage(img_buffer)
-            # Posicionar la imagen después de la tabla
             img.anchor = f'A{len(report_df) + 3}'
             ws.add_image(img)
-
     buffer.seek(0)
     return buffer
 
@@ -183,17 +173,20 @@ st.set_page_config(page_title="Kankai Pro", layout="wide", page_icon="📝")
 manager = TaskManager()
 
 st.title("📝 Kankai Pro Dashboard")
-st.markdown("Organiza, analiza y optimiza tu flujo de trabajo de manera visual e interactiva.")
 
 # --- Navegación por Pestañas ---
-tab_dashboard, tab_kanban, tab_manage = st.tabs(["📊 Dashboard & Análisis", "📋 Tablero Kanban", "⚙️ Gestión & Reportes"])
+tab_dashboard, tab_kanban, tab_manage, tab_about = st.tabs([
+    "📊 Dashboard", 
+    "📋 Tablero Kanban", 
+    "⚙️ Gestión y Reportes", 
+    "ℹ️ Acerca de"
+])
 
 # --- Pestaña 1: Dashboard ---
 with tab_dashboard:
     st.header("Análisis de Productividad")
     summary = manager.get_progress_summary()
     
-    # Métricas Clave
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Tareas Totales", f"{summary['total']} 📝")
     kpi2.metric("Completadas", f"{summary['done']} ✅", f"{summary['percentage']}% del total")
@@ -202,23 +195,18 @@ with tab_dashboard:
     
     st.divider()
 
-    # Gráficos
     chart1, chart2 = st.columns(2)
     with chart1:
         st.subheader("Progreso General")
         progress_chart = create_progress_chart(summary)
-        if progress_chart:
-            st.pyplot(progress_chart)
-        else:
-            st.info("No hay tareas para mostrar en el gráfico.")
+        if progress_chart: st.pyplot(progress_chart)
+        else: st.info("No hay tareas para mostrar en el gráfico.")
             
     with chart2:
         st.subheader("Carga de Trabajo por Dificultad")
         difficulty_chart = create_difficulty_chart(manager.get_tasks(), manager.difficulty_map)
-        if difficulty_chart:
-            st.pyplot(difficulty_chart)
-        else:
-            st.info("No hay tareas para analizar.")
+        if difficulty_chart: st.pyplot(difficulty_chart)
+        else: st.info("No hay tareas para analizar.")
 
 # --- Pestaña 2: Tablero Kanban ---
 with tab_kanban:
@@ -239,7 +227,7 @@ with tab_kanban:
                 
                 with st.container(border=True):
                     st.markdown(f"**{task['name']}**")
-                    st.markdown(f"_{task['id']}_")
+                    st.caption(f"ID: {task['id']}")
                     st.markdown(f"🕒 **:blue[{format_minutes_to_hm(task['estimatedTimeMinutes'])}]** | Dificultad: **:{color}[{manager.difficulty_map.get(task['difficulty'], 'N/A')}]**")
                     
                     btn_cols = st.columns(3)
@@ -285,7 +273,6 @@ with tab_manage:
                         st.markdown(f"{i+1}. **{task['name']}** ({manager.difficulty_map[task['difficulty']]}, {format_minutes_to_hm(task['estimatedTimeMinutes'])})")
         
         st.subheader("Descargar Reporte")
-        # Es necesario volver a obtener tasks y summary en este scope
         tasks_for_report = manager.get_tasks()
         summary_for_report = manager.get_progress_summary()
         excel_buffer = generate_excel_report(tasks_for_report, summary_for_report, manager.difficulty_map)
@@ -295,5 +282,37 @@ with tab_manage:
             file_name=f"reporte_kankai_{time.strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
+        )
+
+# --- Pestaña 4: Acerca de ---
+with tab_about:
+    with st.container(border=True):
+        st.header("Sobre el Autor y la Aplicación")
+        
+        _, center_col, _ = st.columns([1, 1, 1])
+        with center_col:
+            st.image("https://placehold.co/250x250/2B3137/FFFFFF?text=J.S.", width=250, caption="Joseph Javier Sánchez Acuña")
+
+        st.title("Joseph Javier Sánchez Acuña")
+        st.subheader("_Ingeniero Industrial, Experto en Inteligencia Artificial y Desarrollo de Software._")
+        
+        st.markdown("---")
+        
+        st.subheader("Acerca de esta Herramienta")
+        st.markdown("""
+        Esta aplicación de tablero **Kanban 'Kankai Pro'** fue creada para ofrecer una solución visual e interactiva para la gestión de tareas. El objetivo es aplicar los principios de la metodología Kanban para ayudar a individuos y equipos a organizar su flujo de trabajo, visualizar el progreso y optimizar la priorización de tareas.
+        
+        Desde la gestión de tareas en un tablero visual hasta el análisis de productividad y la exportación de reportes, cada funcionalidad está pensada para mejorar la eficiencia y la claridad en cualquier proyecto.
+        """)
+
+        st.markdown("---")
+
+        st.subheader("Contacto y Enlaces Profesionales")
+        st.markdown(
+            """
+            - 🔗 **LinkedIn:** [joseph-javier-sánchez-acuña](https://www.linkedin.com/in/joseph-javier-sánchez-acuña-150410275)
+            - 📂 **GitHub:** [GIUSEPPESAN21](https://github.com/GIUSEPPESAN21)
+            - 📧 **Email:** [joseph.sanchez@uniminuto.edu.co](mailto:joseph.sanchez@uniminuto.edu.co)
+            """
         )
 
